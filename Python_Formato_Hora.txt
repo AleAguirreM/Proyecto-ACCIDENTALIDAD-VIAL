@@ -1,0 +1,197 @@
+import pandas as pd
+import re
+import os
+
+def convertir_hora_militar(hora_str):
+    """
+    Convierte una hora en formato 12h (con a.m./p.m.) a formato militar (24h)
+    Ejemplos:
+    - "12:55 a. m." -> "00:55"
+    - "12:55 p. m." -> "12:55"
+    - "3:30 p. m." -> "15:30"
+    """
+    if pd.isna(hora_str) or hora_str == '':
+        return hora_str
+    
+    # Convertir a string si es necesario
+    hora_str = str(hora_str).strip()
+    
+    # Patrón para extraer horas, minutos y periodo
+    patron = r'(\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?)'
+    match = re.search(patron, hora_str, re.IGNORECASE)
+    
+    if not match:
+        print(f"Formato no reconocido: {hora_str}")
+        return hora_str
+    
+    hora = int(match.group(1))
+    minutos = match.group(2)
+    periodo = match.group(3).lower().replace('.', '').replace(' ', '')
+    
+    # Lógica de conversión
+    if 'am' in periodo:
+        if hora == 12:
+            hora_militar = 0  # Medianoche
+        else:
+            hora_militar = hora
+    elif 'pm' in periodo:
+        if hora == 12:
+            hora_militar = 12  # Mediodía
+        else:
+            hora_militar = hora + 12
+    else:
+        print(f"Periodo no reconocido: {periodo} en {hora_str}")
+        return hora_str
+    
+    # Formatear a string con 2 dígitos
+    return f"{hora_militar:02d}:{minutos}"
+
+def procesar_archivo_accidentalidad(archivo_entrada, archivo_salida=None):
+    """
+    Procesa el archivo de accidentalidad y convierte las horas a formato militar
+    """
+    # Leer el archivo Excel
+    print("Leyendo archivo Excel...")
+    df = pd.read_excel(archivo_entrada)
+    
+    # Verificar que existe la columna HORA
+    if 'HORA' not in df.columns:
+        print("Error: No se encontró la columna 'HORA' en el archivo")
+        print(f"Columnas disponibles: {list(df.columns)}")
+        return None
+    
+    print(f"Archivo cargado: {len(df)} registros")
+    print(f"Columnas: {list(df.columns)}")
+    
+    # Mostrar algunos ejemplos antes de la conversión
+    print("\nEjemplos de horas antes de la conversión:")
+    muestras = df['HORA'].head(10).tolist()
+    for i, hora in enumerate(muestras):
+        print(f"  {i+1}. {hora}")
+    
+    # Aplicar la conversión
+    print("\nConvirtiendo horas a formato militar...")
+    df['HORA_MILITAR'] = df['HORA'].apply(convertir_hora_militar)
+    
+    # Mostrar algunos ejemplos después de la conversión
+    print("\nEjemplos después de la conversión:")
+    for i in range(min(10, len(df))):
+        original = df['HORA'].iloc[i]
+        convertida = df['HORA_MILITAR'].iloc[i]
+        print(f"  {i+1}. '{original}' -> '{convertida}'")
+    
+    # Opcional: reemplazar la columna original
+    df['HORA_ORIGINAL'] = df['HORA']  # Guardar original como backup
+    df['HORA'] = df['HORA_MILITAR']  # Reemplazar con formato militar
+    
+    # Eliminar columna temporal HORA_MILITAR
+    df.drop('HORA_MILITAR', axis=1, inplace=True)
+    
+    # Guardar el archivo procesado
+    if archivo_salida:
+        print(f"\nGuardando archivo procesado como: {archivo_salida}")
+        df.to_excel(archivo_salida, index=False)
+        print("¡Archivo guardado exitosamente!")
+    
+    # Estadísticas de la conversión
+    print(f"\n--- Estadísticas de Conversión ---")
+    print(f"Total de registros procesados: {len(df)}")
+    
+    # Contar tipos de periodos encontrados
+    periodos = df['HORA_ORIGINAL'].str.extract(r'(a\.?\s*m\.?|p\.?\s*m\.?)', flags=re.IGNORECASE)[0]
+    conteo_periodos = periodos.value_counts()
+    print("Distribución de periodos:")
+    for periodo, count in conteo_periodos.items():
+        print(f"  {periodo}: {count} registros")
+    
+    return df
+
+# Función adicional para validar la conversión
+def validar_conversiones():
+    """
+    Valida que las conversiones sean correctas
+    """
+    print("--- Validación de Conversiones ---")
+    
+    # Casos de prueba conocidos
+    casos_prueba = [
+        ("12:00 a. m.", "00:00"),
+        ("12:30 a. m.", "00:30"), 
+        ("1:15 a. m.", "01:15"),
+        ("11:45 a. m.", "11:45"),
+        ("12:00 p. m.", "12:00"),
+        ("12:45 p. m.", "12:45"),
+        ("1:30 p. m.", "13:30"),
+        ("11:55 p. m.", "23:55")
+    ]
+    
+    print("Validando casos de prueba:")
+    for original, esperado in casos_prueba:
+        resultado = convertir_hora_militar(original)
+        estado = "✓" if resultado == esperado else "✗"
+        print(f"  {estado} '{original}' -> '{resultado}' (esperado: '{esperado}')")
+
+# Configuración de rutas específicas
+def main():
+    # Rutas específicas según tu configuración
+    archivo_entrada = r"C:\Users\JONATHAN HINCAPIE\Desktop\Proyecto\Proyecto_Accidentalidad.xlsx"
+    
+    # Crear nombre para archivo de salida
+    directorio = os.path.dirname(archivo_entrada)
+    nombre_archivo = os.path.basename(archivo_entrada)
+    nombre_sin_extension = os.path.splitext(nombre_archivo)[0]
+    archivo_salida = os.path.join(directorio, f"{nombre_sin_extension}_HORA_MILITAR.xlsx")
+    
+    print("=" * 60)
+    print("CONVERSOR DE HORAS A FORMATO MILITAR")
+    print("=" * 60)
+    print(f"Archivo de entrada: {archivo_entrada}")
+    print(f"Archivo de salida: {archivo_salida}")
+    print("=" * 60)
+    
+    try:
+        # Validar función de conversión
+        validar_conversiones()
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(archivo_entrada):
+            print(f"\n❌ Error: No se encontró el archivo en la ruta:")
+            print(f"   {archivo_entrada}")
+            print("\nPor favor verifica:")
+            print("1. Que la ruta sea correcta")
+            print("2. Que el archivo exista")
+            print("3. Que no esté abierto en Excel")
+            return
+        
+        # Procesar archivo
+        print(f"\n📁 Procesando archivo...")
+        df_procesado = procesar_archivo_accidentalidad(archivo_entrada, archivo_salida)
+        
+        if df_procesado is not None:
+            print(f"\n✅ ¡Procesamiento completado!")
+            print(f"📊 Datos guardados en: {archivo_salida}")
+            
+            # Mostrar resumen final
+            print("\n--- RESUMEN FINAL ---")
+            print(f"• Archivo original: {archivo_entrada}")
+            print(f"• Archivo procesado: {archivo_salida}")
+            print(f"• Registros totales: {len(df_procesado):,}")
+            print(f"• Columna 'HORA' convertida a formato militar (24h)")
+            print(f"• Columna 'HORA_ORIGINAL' guarda los valores originales")
+            
+            # Mostrar algunas horas convertidas como ejemplo final
+            print(f"\n🔍 Muestra final de conversiones:")
+            for i in range(min(5, len(df_procesado))):
+                original = df_procesado['HORA_ORIGINAL'].iloc[i]
+                convertida = df_procesado['HORA'].iloc[i]
+                print(f"   {original} → {convertida}")
+                
+    except PermissionError:
+        print(f"\n❌ Error: No se puede acceder al archivo.")
+        print("   Posiblemente está abierto en Excel. Ciérralo e intenta nuevamente.")
+    except Exception as e:
+        print(f"\n❌ Error durante el procesamiento: {str(e)}")
+        print("   Verifica que el archivo tenga el formato correcto")
+
+if __name__ == "__main__":
+    main()
